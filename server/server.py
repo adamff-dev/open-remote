@@ -41,7 +41,19 @@ from ctypes import wintypes
 if sys.platform != "win32":
     sys.exit("Este servidor solo funciona en Windows.")
 
-sys.stdout.reconfigure(line_buffering=True)
+APP_NAME = "PC Remote"
+FROZEN = getattr(sys, "frozen", False)
+# Compilado (.exe) la config y el log van a %APPDATA%\PcRemote; como script, junto a server.py
+DATA_DIR = (os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "PcRemote")
+            if FROZEN else os.path.dirname(os.path.abspath(__file__)))
+
+if sys.stdout is None:
+    # .exe sin consola: stdout/stderr no existen, se redirigen a un log
+    os.makedirs(DATA_DIR, exist_ok=True)
+    sys.stdout = sys.stderr = open(os.path.join(DATA_DIR, "server.log"), "w",
+                                   encoding="utf-8", buffering=1)
+else:
+    sys.stdout.reconfigure(line_buffering=True)
 
 # DPI awareness antes de cualquier llamada a la API de pantalla, para que las
 # coordenadas del cursor y de la captura sean píxeles físicos.
@@ -368,6 +380,13 @@ class Server:
         # un único hilo para captura -> mss siempre en el mismo hilo
         self.cap_exec = ThreadPoolExecutor(max_workers=1, thread_name_prefix="capture")
         self.name = socket.gethostname()
+        self.clients = 0
+        self.on_clients = None  # callback(n) al cambiar el nº de clientes
+
+    def _set_clients(self, delta):
+        self.clients += delta
+        if self.on_clients:
+            self.on_clients(self.clients)
 
     async def handle(self, reader, writer):
         peer = writer.get_extra_info("peername")
@@ -424,15 +443,19 @@ class Session:
                               "monitors": len(mons)})
         print(f"[+] Conectado {peer[0]}")
 
-        while True:
-            line = await self.reader.readline()
-            if not line:
-                return
-            try:
-                msg = json.loads(line)
-            except ValueError:
-                continue
-            await self.dispatch(msg)
+        self.srv._set_clients(1)
+        try:
+            while True:
+                line = await self.reader.readline()
+                if not line:
+                    return
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    continue
+                await self.dispatch(msg)
+        finally:
+            self.srv._set_clients(-1)
 
     async def _run_cap(self, fn, *args):
         return await asyncio.get_running_loop().run_in_executor(self.srv.cap_exec, fn, *args)
@@ -536,30 +559,24 @@ def load_config(path):
         cfg["port"] = TCP_PORT
         changed = True
     if changed:
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2)
     return cfg
 
 
-async def main():
-    base = os.path.dirname(os.path.abspath(sys.argv[0]))
+def parse_args():
     ap = argparse.ArgumentParser(description="PC Remote - servidor")
     ap.add_argument("--port", type=int, help="puerto TCP (por defecto 47000)")
     ap.add_argument("--pin", help="PIN de acceso (se guarda en config.json)")
     ap.add_argument("--no-pin", action="store_true", help="desactiva el PIN (¡cualquiera en tu red podrá conectarse!)")
-    ap.add_argument("--config", default=os.path.join(base, "config.json"))
-    args = ap.parse_args()
+    ap.add_argument("--no-tray", action="store_true", help="sin icono en la bandeja (solo consola)")
+    ap.add_argument("--config", default=os.path.join(DATA_DIR, "config.json"))
+    return ap.parse_args()
 
-    cfg = load_config(args.config)
-    if args.pin:
-        cfg["pin"] = args.pin
-        with open(args.config, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2)
-    port = args.port or int(cfg["port"])
-    pin = "" if args.no_pin else str(cfg["pin"])
 
-    srv = Server(port, pin)
-    tcp = await asyncio.start_server(srv.handle, "0.0.0.0", port, limit=1 << 20)
+async def serve(srv):
+    tcp = await asyncio.start_server(srv.handle, "0.0.0.0", srv.port, limit=1 << 20)
     loop = asyncio.get_running_loop()
     await loop.create_datagram_endpoint(lambda: Discovery(srv), local_addr=("0.0.0.0", UDP_PORT),
                                         allow_broadcast=True)
@@ -568,17 +585,109 @@ async def main():
     print(f"  PC Remote - servidor   ({srv.name})")
     print("=" * 46)
     for ip in local_ips():
-        print(f"  IP: {ip}   puerto: {port}")
-    print(f"  PIN: {pin if pin else '(desactivado)'}")
+        print(f"  IP: {ip}   puerto: {srv.port}")
+    print(f"  PIN: {srv.pin if srv.pin else '(desactivado)'}")
     print(f"  Captura: {'mss' if mss else 'PIL.ImageGrab'}")
-    print("  Ctrl+C para salir")
+    print("  Ctrl+C para salir" if srv.on_clients is None else "  Salir: icono de la bandeja")
     print("=" * 46)
     async with tcp:
         await tcp.serve_forever()
 
 
+# --------------------------------------------------------------------------- #
+# Icono en la bandeja del sistema
+# --------------------------------------------------------------------------- #
+
+def make_icon(size=64):
+    """Icono de la app: un móvil blanco sobre un cuadrado azul redondeado."""
+    s = size / 64
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.rounded_rectangle((0, 0, size - 1, size - 1), radius=14 * s, fill=(37, 99, 235))
+    d.rounded_rectangle((19 * s, 8 * s, 45 * s, 56 * s), radius=5 * s, fill=(255, 255, 255))
+    d.rounded_rectangle((23 * s, 14 * s, 41 * s, 44 * s), radius=2 * s, fill=(37, 99, 235))
+    d.ellipse((29 * s, 47 * s, 35 * s, 53 * s), fill=(37, 99, 235))
+    return img
+
+
+def message_box(text, error=False):
+    flags = 0x10 if error else 0x40  # MB_ICONERROR / MB_ICONINFORMATION
+    ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, flags | 0x10000)  # MB_SETFOREGROUND
+
+
+def run_tray(srv, config_path):
+    import pystray
+
+    ips = local_ips()
+    pin_txt = srv.pin if srv.pin else "(desactivado)"
+    info = "\n".join([f"Equipo: {srv.name}"] + [f"IP: {ip}   puerto: {srv.port}" for ip in ips]
+                     + [f"PIN: {pin_txt}"])
+
+    def tooltip(n):
+        return f"{APP_NAME} - PIN {pin_txt} - {n} conectado{'s' if n != 1 else ''}"
+
+    def show_info(icon, item):
+        # en otro hilo para no bloquear el bucle de mensajes del icono
+        threading.Thread(target=message_box, args=(info,), daemon=True).start()
+
+    def open_folder(icon, item):
+        os.startfile(os.path.dirname(os.path.abspath(config_path)))
+
+    def quit_app(icon, item):
+        icon.stop()
+
+    items = [pystray.MenuItem("Mostrar IP y PIN", show_info, default=True),
+             pystray.Menu.SEPARATOR]
+    items += [pystray.MenuItem(f"IP: {ip}:{srv.port}", None, enabled=False) for ip in ips]
+    items += [pystray.MenuItem(f"PIN: {pin_txt}", None, enabled=False),
+              pystray.Menu.SEPARATOR,
+              pystray.MenuItem("Abrir carpeta de configuración", open_folder),
+              pystray.MenuItem("Salir", quit_app)]
+
+    icon = pystray.Icon("PcRemote", make_icon(64), tooltip(0), pystray.Menu(*items))
+
+    def on_clients(n):
+        icon.title = tooltip(n)
+
+    srv.on_clients = on_clients
+
+    def worker(icon):
+        icon.visible = True
+        try:
+            asyncio.run(serve(srv))
+        except OSError as e:
+            message_box(f"No se pudo iniciar el servidor en el puerto {srv.port}.\n"
+                        f"¿Ya hay otra copia de PC Remote abierta?\n\n{e}", error=True)
+            icon.stop()
+        except Exception as e:  # noqa: BLE001
+            message_box(f"Error inesperado del servidor:\n{e!r}", error=True)
+            icon.stop()
+
+    icon.run(setup=worker)
+
+
+def main():
+    args = parse_args()
+    cfg = load_config(args.config)
+    if args.pin:
+        cfg["pin"] = args.pin
+        with open(args.config, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+    port = args.port or int(cfg["port"])
+    pin = "" if args.no_pin else str(cfg["pin"])
+    srv = Server(port, pin)
+
+    if args.no_tray:
+        try:
+            asyncio.run(serve(srv))
+        except KeyboardInterrupt:
+            pass
+        return
+
+    run_tray(srv, args.config)
+    # el bucle asyncio y el hilo de captura siguen vivos: salida inmediata
+    os._exit(0)
+
+
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass
+    main()
