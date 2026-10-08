@@ -615,6 +615,43 @@ def message_box(text, error=False):
     ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, flags | 0x10000)  # MB_SETFOREGROUND
 
 
+# Inicio automático: valor en HKCU\...\Run (por usuario, no requiere permisos de administrador)
+RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+RUN_VALUE = "PcRemote"
+
+
+def autostart_command():
+    if FROZEN:
+        return f'"{sys.executable}"'
+    # como script: pythonw.exe para que no aparezca ninguna consola
+    exe = sys.executable
+    pyw = os.path.join(os.path.dirname(exe), "pythonw.exe")
+    return f'"{pyw if os.path.isfile(pyw) else exe}" "{os.path.abspath(__file__)}"'
+
+
+def autostart_enabled():
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as k:
+            value, _ = winreg.QueryValueEx(k, RUN_VALUE)
+    except OSError:
+        return False
+    # si el .exe se ha movido, la entrada antigua no cuenta como activada
+    return value == autostart_command()
+
+
+def set_autostart(enabled):
+    import winreg
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+        if enabled:
+            winreg.SetValueEx(k, RUN_VALUE, 0, winreg.REG_SZ, autostart_command())
+        else:
+            try:
+                winreg.DeleteValue(k, RUN_VALUE)
+            except FileNotFoundError:
+                pass
+
+
 def run_tray(srv, config_path):
     import pystray
 
@@ -633,6 +670,14 @@ def run_tray(srv, config_path):
     def open_folder(icon, item):
         os.startfile(os.path.dirname(os.path.abspath(config_path)))
 
+    def toggle_autostart(icon, item):
+        try:
+            set_autostart(not autostart_enabled())
+        except OSError as e:
+            threading.Thread(target=message_box, daemon=True,
+                             args=(f"No se pudo cambiar el inicio automático:\n{e}", True)).start()
+        icon.update_menu()
+
     def quit_app(icon, item):
         icon.stop()
 
@@ -641,6 +686,8 @@ def run_tray(srv, config_path):
     items += [pystray.MenuItem(f"IP: {ip}:{srv.port}", None, enabled=False) for ip in ips]
     items += [pystray.MenuItem(f"PIN: {pin_txt}", None, enabled=False),
               pystray.Menu.SEPARATOR,
+              pystray.MenuItem("Iniciar con Windows", toggle_autostart,
+                               checked=lambda item: autostart_enabled()),
               pystray.MenuItem("Abrir carpeta de configuración", open_folder),
               pystray.MenuItem("Salir", quit_app)]
 
