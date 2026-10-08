@@ -1,41 +1,55 @@
-# PC Remote (MVP tipo Unified Remote)
+# Open Remote
 
-Controla un PC con Windows desde Android: touchpad, ver la pantalla y hacer clic en ella, y escribir en vivo con el teclado del móvil.
+Control a Windows PC from your Android phone over the local network: use it as a touchpad, view the screen and tap on it, and type live with the phone's keyboard.
 
-## Servidor (Windows)
+## Windows server
+
+### Prebuilt executable
+
+Run `PcRemoteServer.exe`. It is a single file that works on any 64-bit Windows 10/11 without installing Python.
+
+It lives in the system tray (the UI is in Spanish):
+
+- **Left click**: show the PC's IP addresses and PIN.
+- **Right click**: menu with *Iniciar con Windows* (toggle autostart), *Abrir carpeta de configuración* (open config folder) and *Salir* (exit).
+
+Config (`config.json`, with the PIN and port) and the log (`server.log`) are stored in `%APPDATA%\PcRemote\`.
+
+### Build the executable
+
+Requires 64-bit Python 3.8+ on Windows.
 
 ```
 cd server
-start_server.bat          # instala pillow + mss y arranca
-# o: python server.py [--port 47000] [--pin 1234] [--no-pin]
+build_exe.bat             # outputs dist\PcRemoteServer.exe
 ```
 
-Muestra las IPs y el **PIN** (se guarda en `server/config.json`). Por defecto aparece un icono en la bandeja del sistema (clic = ver IP y PIN, clic derecho → Salir); `--no-tray` para usar solo la consola. Usa TCP 47000 y UDP 47001 (descubrimiento); si Windows pregunta por el firewall, permite redes privadas.
-
-### Ejecutable (.exe)
+### Run from source
 
 ```
 cd server
-build_exe.bat             # genera dist\PcRemoteServer.exe
+start_server.bat          # installs dependencies and starts the server
+# or: python server.py [--port 47000] [--pin 1234] [--no-pin] [--no-tray]
 ```
 
-Un único `.exe` sin consola que funciona en cualquier Windows 10/11 de 64 bits sin instalar Python. Se queda en la bandeja del sistema; con clic derecho → **Salir** se cierra. La config y el log (`server.log`) se guardan en `%APPDATA%\PcRemote\`.
+The server uses TCP port 47000 and UDP port 47001 (discovery). If Windows Firewall asks, allow access on private networks.
 
-## App Android
+## Android app
 
 ```
 cd android
-gradlew assembleDebug     # APK en app/build/outputs/apk/debug/
+gradlew assembleDebug     # APK in app/build/outputs/apk/debug/
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Uso
+Open the app, pick your PC from the discovered servers (or enter its IP manually) and type the PIN shown by the server.
 
-- **Ratón**: deslizar = mover · tocar = clic · 2 dedos tocar = clic derecho · 2 dedos deslizar = scroll · 3 dedos = clic central · mantener y mover = arrastrar. Los botones de abajo se pueden mantener pulsados.
-- **Pantalla**: tocar = clic en ese punto (dos toques = doble clic) · mantener = clic derecho · pellizcar = zoom · arrastrar = desplazarse · ⤢ = ajustar. Botón de calidad (Baja/Media/Alta) y de monitor si hay varios.
-- **Teclado (⌨)**: lo que escribes con el teclado de Android se envía al instante (autocorrector, gestos y dictado incluidos). Barra con Ctrl/Alt/Shift (se aplican a la siguiente tecla, p. ej. Ctrl + c), Win, Esc, Tab, flechas, F1–F12, multimedia…
+## Usage
 
-## Protocolo
+- **Mouse**: swipe = move · tap = click · two-finger tap = right click · two-finger swipe = scroll · three-finger tap = middle click · hold and move = drag.
+- **Screen**: tap = click at that point (double tap = double click) · hold = right click · pinch = zoom · drag = pan.
+- **Keyboard**: whatever you type on the Android keyboard is sent instantly, with a bar for Ctrl/Alt/Shift, Win, Esc, Tab, arrows, F1–F12 and media keys.
 
-Cliente → servidor: una línea JSON por mensaje. Servidor → cliente: `[tipo 1B][longitud 4B BE][payload]` (1 = JSON, 2 = JPEG). Detalle de mensajes al inicio de `server/server.py`.
-# open-remote
+## Protocol
+
+Client → server: one JSON message per line. Server → client: `[type 1B][length 4B BE][payload]` (1 = JSON, 2 = JPEG). Message details are at the top of `server/server.py`.
