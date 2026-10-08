@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="6dp">
+
+    <!-- Barra superior -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/tabMouse"
+            style="@style/Btn"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:text="Ratón" />
+
+        <Button
+            android:id="@+id/tabScreen"
+            style="@style/Btn"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:text="Pantalla" />
+
+        <Button
+            android:id="@+id/btnKeyboard"
+            style="@style/Btn"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:text="⌨" />
+
+        <TextView
+            android:id="@+id/title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:gravity="end"
+            android:paddingEnd="6dp"
+            android:singleLine="true"
+            android:textColor="@color/text_dim" />
+
+        <Button
+            android:id="@+id/btnDisconnect"
+            style="@style/Btn"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:text="✕" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="4dp"
+        android:layout_weight="1">
+
+        <!-- Modo ratón -->
+        <LinearLayout
+            android:id="@+id/mousePanel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/pad_bg"
+                    android:gravity="center"
+                    android:lineSpacingExtra="4dp"
+                    android:padding="24dp"
+                    android:text="@string/touchpad_hint"
+                    android:textColor="#55FFFFFF"
+                    android:textSize="13sp" />
+
+                <com.addev.pcremote.TouchpadView
+                    android:id="@+id/touchpad"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+            </FrameLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="64dp"
+                android:layout_marginTop="4dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnLeft"
+                    style="@style/Btn"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="2"
+                    android:text="Izquierdo" />
+
+                <Button
+                    android:id="@+id/btnMiddle"
+                    style="@style/Btn"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:text="●" />
+
+                <Button
+                    android:id="@+id/btnRight"
+                    style="@style/Btn"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="2"
+                    android:text="Derecho" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Modo pantalla -->
+        <FrameLayout
+            android:id="@+id/screenPanel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#FF000000"
+            android:visibility="gone">
+
+            <com.addev.pcremote.ScreenView
+                android:id="@+id/screenView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|end"
+                android:alpha="0.85"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnQuality"
+                    style="@style/Btn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/btnMonitor"
+                    style="@style/Btn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/btnFit"
+                    style="@style/Btn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:text="Ajustar alto"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </FrameLayout>
+    </FrameLayout>
+
+    <!-- Teclado -->
+    <LinearLayout
+        android:id="@+id/keyboardPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/keysRow"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+
+        <com.addev.pcremote.KeyCaptureEditText
+            android:id="@+id/keyInput"
+            style="@style/Input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:hint="Escribe aquí: se envía al PC en vivo"
+            android:maxLines="2"
+            android:singleLine="false" />
+    </LinearLayout>
+</LinearLayout>

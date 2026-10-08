@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PC Remote</string>
+    <string name="touchpad_hint">Desliza para mover · Toca = clic\n2 dedos: tocar = clic derecho · deslizar = scroll\nMantén pulsado y mueve = arrastrar</string>
+</resources>

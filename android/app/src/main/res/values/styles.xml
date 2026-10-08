@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#FF101114</color>
+    <color name="surface">#FF1C1E23</color>
+    <color name="surface2">#FF272A31</color>
+    <color name="accent">#FF4F8CFF</color>
+    <color name="text">#FFE8EAED</color>
+    <color name="text_dim">#FF8A8F98</color>
+
+    <style name="AppTheme" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:colorPrimary">@color/bg</item>
+        <item name="android:colorPrimaryDark">@color/bg</item>
+        <item name="android:statusBarColor">@color/bg</item>
+        <item name="android:navigationBarColor">@color/bg</item>
+        <item name="android:textColor">@color/text</item>
+    </style>
+
+    <style name="Btn" parent="android:Widget.Material.Button.Borderless">
+        <item name="android:background">@drawable/btn_bg</item>
+        <item name="android:textColor">@color/text</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:minHeight">0dp</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:layout_margin">3dp</item>
+    </style>
+
+    <style name="Input">
+        <item name="android:background">@drawable/input_bg</item>
+        <item name="android:padding">12dp</item>
+        <item name="android:textColor">@color/text</item>
+        <item name="android:textColorHint">@color/text_dim</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:singleLine">true</item>
+    </style>
+</resources>
