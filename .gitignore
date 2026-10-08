@@ -1,0 +1,5 @@
+server/config.json
+server/__pycache__/
+server/build/
+server/.venv-build/
+dist/
