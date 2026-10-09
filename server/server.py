@@ -31,6 +31,7 @@ import os
 import random
 import socket
 import struct
+import subprocess
 import sys
 import threading
 import time
@@ -615,6 +616,11 @@ def message_box(text, error=False):
     ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, flags | 0x10000)  # MB_SETFOREGROUND
 
 
+def ask_yes_no(text):
+    # MB_YESNO | MB_ICONWARNING | MB_SETFOREGROUND -> IDYES = 6
+    return ctypes.windll.user32.MessageBoxW(None, text, APP_NAME, 0x4 | 0x30 | 0x10000) == 6
+
+
 # Inicio automático: valor en HKCU\...\Run (por usuario, no requiere permisos de administrador)
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "PcRemote"
@@ -652,6 +658,71 @@ def set_autostart(enabled):
                 pass
 
 
+# Firewall: el .exe es un programa nuevo para Windows y, sobre todo en redes marcadas como
+# "Pública", sus conexiones entrantes se bloquean. Se añade una regla de entrada para el .exe.
+FW_RULE = "PC Remote"
+
+
+def firewall_allowed():
+    try:
+        out = subprocess.run(
+            ["netsh", "advfirewall", "firewall", "show", "rule", f"name={FW_RULE}", "verbose"],
+            capture_output=True, stdin=subprocess.DEVNULL, creationflags=0x08000000,  # CREATE_NO_WINDOW
+            timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return True  # sin netsh no podemos comprobarlo; no molestar al usuario
+    # la salida está traducida; solo comprobamos que la regla apunta a este .exe
+    return out.returncode == 0 and sys.executable.lower() in out.stdout.decode("oem", "replace").lower()
+
+
+class SHELLEXECUTEINFOW(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", wintypes.DWORD), ("fMask", ctypes.c_ulong), ("hwnd", wintypes.HWND),
+        ("lpVerb", wintypes.LPCWSTR), ("lpFile", wintypes.LPCWSTR),
+        ("lpParameters", wintypes.LPCWSTR), ("lpDirectory", wintypes.LPCWSTR),
+        ("nShow", ctypes.c_int), ("hInstApp", wintypes.HINSTANCE), ("lpIDList", ctypes.c_void_p),
+        ("lpClass", wintypes.LPCWSTR), ("hkeyClass", wintypes.HKEY), ("dwHotKey", wintypes.DWORD),
+        ("hIconOrMonitor", wintypes.HANDLE), ("hProcess", wintypes.HANDLE),
+    ]
+
+
+def add_firewall_rule():
+    """Crea la regla con permisos de administrador (aviso UAC). Devuelve True si se creó."""
+    exe = sys.executable
+    # borra reglas previas del .exe (incluidos los "Bloquear" que crea Windows si se canceló
+    # su aviso) y crea una de entrada para cualquier perfil de red
+    cmd = (f'/s /c "netsh advfirewall firewall delete rule name=all program="{exe}" & '
+           f'netsh advfirewall firewall delete rule name="{FW_RULE}" & '
+           f'netsh advfirewall firewall add rule name="{FW_RULE}" dir=in action=allow '
+           f'program="{exe}" enable=yes profile=any"')
+    info = SHELLEXECUTEINFOW(cbSize=ctypes.sizeof(SHELLEXECUTEINFOW), fMask=0x40,  # NOCLOSEPROCESS
+                             lpVerb="runas", lpFile="cmd.exe", lpParameters=cmd, nShow=0)
+    if not ctypes.windll.shell32.ShellExecuteExW(ctypes.byref(info)) or not info.hProcess:
+        return False  # UAC cancelado
+    kernel32 = ctypes.windll.kernel32
+    kernel32.WaitForSingleObject(info.hProcess, 60000)
+    code = wintypes.DWORD(1)
+    kernel32.GetExitCodeProcess(info.hProcess, ctypes.byref(code))
+    kernel32.CloseHandle(info.hProcess)
+    return code.value == 0
+
+
+def setup_firewall(ask):
+    if firewall_allowed():
+        if not ask:
+            message_box("PC Remote ya está permitido en el Firewall de Windows.")
+        return
+    if ask and not ask_yes_no(
+            "El Firewall de Windows no permite que el móvil se conecte a PC Remote.\n\n"
+            "¿Añadir una regla al firewall ahora? (Windows pedirá permisos de administrador)"):
+        return
+    if add_firewall_rule():
+        message_box("Listo: PC Remote está permitido en el Firewall de Windows.")
+    else:
+        message_box("No se pudo añadir la regla al firewall.\n\nPuedes reintentarlo desde el "
+                    "menú del icono: \"Permitir en el firewall\".", error=True)
+
+
 def run_tray(srv, config_path):
     import pystray
 
@@ -678,6 +749,9 @@ def run_tray(srv, config_path):
                              args=(f"No se pudo cambiar el inicio automático:\n{e}", True)).start()
         icon.update_menu()
 
+    def allow_firewall(icon, item):
+        threading.Thread(target=setup_firewall, args=(False,), daemon=True).start()
+
     def quit_app(icon, item):
         icon.stop()
 
@@ -688,6 +762,7 @@ def run_tray(srv, config_path):
               pystray.Menu.SEPARATOR,
               pystray.MenuItem("Iniciar con Windows", toggle_autostart,
                                checked=lambda item: autostart_enabled()),
+              pystray.MenuItem("Permitir en el firewall", allow_firewall, visible=FROZEN),
               pystray.MenuItem("Abrir carpeta de configuración", open_folder),
               pystray.MenuItem("Salir", quit_app)]
 
@@ -700,6 +775,9 @@ def run_tray(srv, config_path):
 
     def worker(icon):
         icon.visible = True
+        if FROZEN:
+            # como script, la regla es la de python.exe; no la tocamos
+            threading.Thread(target=setup_firewall, args=(True,), daemon=True).start()
         try:
             asyncio.run(serve(srv))
         except OSError as e:
