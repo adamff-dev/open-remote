@@ -11,7 +11,9 @@ Run `PcRemoteServer.exe`. It is a single file that works on any 64-bit Windows 1
 It lives in the system tray (the UI is in Spanish):
 
 - **Left click**: show the PC's IP addresses and PIN.
-- **Right click**: menu with *Iniciar con Windows* (toggle autostart), *Abrir carpeta de configuración* (open config folder) and *Salir* (exit).
+- **Right click**: menu with *Iniciar con Windows* (toggle autostart), *Permitir en el firewall* (allow in firewall), *Abrir carpeta de configuración* (open config folder) and *Salir* (exit).
+
+On first run it offers to add an inbound Windows Firewall rule for the executable (requires admin approval). Without it, the phone cannot connect, especially on networks marked as Public.
 
 Config (`config.json`, with the PIN and port) and the log (`server.log`) are stored in `%APPDATA%\PcRemote\`.
 
